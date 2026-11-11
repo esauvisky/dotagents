@@ -23,3 +23,11 @@ for h in .iflow .qwen .augment .openhands .openclaw .qoder .config/goose; do
     ln -sT "$agents/skills" "$HOME/$h/skills"
   fi
 done
+
+if [[ -d "$HOME/.codex" ]]; then
+  ln -s "$agents/AGENTS.md" "$HOME/.codex/AGENTS.md"
+fi
+if [[ -d "$HOME/.config/opencode" ]]; then
+  ln -sT "$agents/commands" "$HOME/.config/opencode/commands"
+  ln -sT "$agents/skills" "$HOME/.config/opencode/skills"
+fi
