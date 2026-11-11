@@ -28,7 +28,7 @@ else
   name="⎇ $title"
 fi
 
-printf -v cmd 'env -u CLAUDE_CODE_CHILD_SESSION claude --resume %q --fork-session --name %q' "$session_id" "$name"
+printf -v cmd 'claude --resume %q --fork-session --name %q' "$session_id" "$name"
 if [[ -n "$rest" ]]; then
   printf -v cmd '%s %q' "$cmd" "$rest"
   reason="Forked session opened with prompt."
@@ -36,6 +36,6 @@ else
   reason="Forked session opened in a new terminal."
 fi
 
-gnome-terminal --working-directory="$cwd" -- bash -c "$cmd; exec bash"
+gnome-terminal --working-directory="$cwd" -- bash -c "export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1; unset CLAUDE_CODE_CHILD_SESSION; $cmd; exec bash"
 
 jq -n --arg reason "$reason" '{decision: "block", reason: $reason}'
