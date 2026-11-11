@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+description="${1:?usage: cfind \"description of the session\"}"
+
+index=""
+while read -r f; do
+  id=$(basename "$f" .jsonl)
+  cwd=$(jq -rs 'map(select(.cwd))[0].cwd' "$f")
+  when=$(stat -c %y "$f" | cut -c1-16)
+  prompts=$(jq -rs 'map(select(.type=="user" and (.isMeta|not) and (.message.content|type=="string") and (.message.content|startswith("<")|not)) | .message.content[0:160]) | .[0:4] | join(" | ")' "$f")
+  index+="$id | $when | $cwd | $prompts"$'\n'
+done < <(ls -t ~/.claude/projects/*/*.jsonl | head -n 50)
+
+answer=$(TITLE_HOOK_ACTIVE=1 claude -p --model haiku --no-session-persistence "A user is looking for one of their earlier Claude Code sessions.
+Description: $description
+
+Sessions (id | last modified | directory | first prompts):
+$index
+Reply with up to 3 candidate session ids, most likely first, one per line, in the form: <id> | <one-line reason>. Reply with NONE if nothing fits.")
+
+if [[ "$answer" == NONE* ]]; then
+  echo "cfind: no matching session in the latest 50" >&2
+  exit 1
+fi
+
+mapfile -t cands < <(grep -E '^[0-9a-f-]{36} \|' <<<"$answer" | head -n 3)
+if (( ${#cands[@]} == 0 )); then
+  echo "cfind: unparseable answer:" >&2
+  echo "$answer" >&2
+  exit 1
+fi
+
+for i in "${!cands[@]}"; do
+  id=$(cut -d' ' -f1 <<<"${cands[i]}")
+  row=$(grep "^$id " <<<"$index")
+  echo "$((i+1))) $(cut -d'|' -f2- <<<"${cands[i]}" | sed 's/^ *//')"
+  echo "   $(cut -d'|' -f2,3 <<<"$row" | sed 's/|/ · /')"
+done
+
+read -r -p "Resume which? [1-${#cands[@]}] " pick
+if ! [[ "$pick" =~ ^[1-9][0-9]*$ ]] || (( pick > ${#cands[@]} )); then
+  echo "cfind: invalid choice: $pick" >&2
+  exit 1
+fi
+
+id=$(cut -d' ' -f1 <<<"${cands[pick-1]}")
+cwd=$(grep "^$id " <<<"$index" | cut -d'|' -f3 | sed 's/^ *//;s/ *$//')
+cd "$cwd"
+exec claude --resume "$id"
