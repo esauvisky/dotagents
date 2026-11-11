@@ -10,7 +10,6 @@ My global agent configuration: one `AGENTS.md` with instructions, skills, slash 
 | `bin/cfind` | Terminal command that finds an earlier session by description and resumes it. |
 | `commands/deploy.md` | `/deploy`: bump version, commit, push, watch the pipeline. |
 | `commands/release-note.md` | `/release-note`: draft a release announcement from commits and Discord exports. |
-| `hooks/guard-push.sh` | PreToolUse (Bash): blocks `git push` unless the prompt or a `[deploy]`/`[publish]` commit marker authorizes it. Warns about credential variables inherited from the shell. |
 | `hooks/stop-verify.sh` | Stop: reminds you when the repo's `## Checks` command never ran in the session. |
 | `hooks/auto-title.sh` | Stop: every 10 user turns, writes a short AI-generated title for the session. Titles set by hand are never overwritten. |
 | `hooks/split-session.sh` | UserPromptSubmit: a message starting with `%` forks the session into a new terminal. `%<text>` also sends `<text>` to the fork as its first prompt. |
@@ -46,31 +45,29 @@ git clone git@github.com:esauvisky/dotagents.git ~/.agents
 ~/.agents/install.sh
 ```
 
-Then merge the hook block below into `~/.claude/settings.json`.
-
-`install.sh` creates the symlinks listed below. It fails if a target already exists, so it never overwrites a file.
+`install.sh` creates the symlinks listed below and registers the hooks in `~/.claude/settings.json`. It fails if a conflicting file or link already exists, so it never overwrites a file.
 
 ## Symlinks created by `install.sh`
 
+- `~/.agents` → repo root (when cloned elsewhere, e.g. `~/Coding/dotagents`)
 - `~/.claude/CLAUDE.md` → `AGENTS.md`
 - `~/.claude/hooks` → `hooks/`
 - `~/.claude/commands` → `commands/`
-- `~/.claude/skills/<name>` → `skills/<name>` for each shipped skill
+- `~/.claude/skills/<name>` → `skills/<name>` for each skill in `skills/`
 - `~/.local/bin/cfind` → `bin/cfind`
+- `~/.codex/AGENTS.md` → `AGENTS.md` (when `~/.codex` exists)
+- `~/.config/opencode/{AGENTS.md,commands,skills}` → `AGENTS.md`, `commands/`, `skills/` (when `~/.config/opencode` exists)
 - `~/.<harness>/skills` → `~/.agents/skills` for each other harness that is installed (`.iflow`, `.qwen`, `.augment`, `.openhands`, `.openclaw`, `.qoder`, `.config/goose`)
 
 Other harnesses see everything in `~/.agents/skills`, including skills installed there from third-party sources.
 
 ## Hook registration
 
-Hooks run only when they appear in `~/.claude/settings.json`. That file isn't in this repo because it holds credentials. Add these entries:
+`install.sh` merges these entries into `~/.claude/settings.json`:
 
 ```json
 {
   "hooks": {
-    "PreToolUse": [
-      {"matcher": "Bash", "hooks": [{"type": "command", "command": "$HOME/.claude/hooks/guard-push.sh"}]}
-    ],
     "Stop": [
       {"hooks": [{"type": "command", "command": "$HOME/.claude/hooks/stop-verify.sh"}]},
       {"hooks": [{"type": "command", "command": "$HOME/.claude/hooks/auto-title.sh"}]}
