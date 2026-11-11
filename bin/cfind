@@ -62,14 +62,22 @@ if (( ${#cands[@]} == 0 )); then
   exit 1
 fi
 
+bold=$'\e[1m'
+dim=$'\e[2m'
+cyan=$'\e[1;36m'
+reset=$'\e[0m'
+
+echo
 for i in "${!cands[@]}"; do
   id=$(cut -d' ' -f1 <<<"${cands[i]}")
   row=$(grep "^$id " <<<"$index")
-  echo "$((i+1))) $(cut -d'|' -f2- <<<"${cands[i]}" | sed 's/^ *//')"
-  echo "   $(cut -d'|' -f2,3 <<<"$row" | sed 's/|/ · /')"
+  reason=$(cut -d'|' -f2- <<<"${cands[i]}" | sed 's/^ *//')
+  meta=$(cut -d'|' -f2,3 <<<"$row" | sed "s/^ *//;s/ *$//;s/|/ · /;s#$HOME#~#")
+  printf '%s%d)%s %s%s%s\n' "$cyan" $((i+1)) "$reset" "$bold" "$reason" "$reset"
+  printf '     %s%s%s\n\n' "$dim" "$meta" "$reset"
 done
 
-read -r -p "Resume which? [1-${#cands[@]}] " pick
+read -r -p "${bold}Resume which? [1-${#cands[@]}]${reset} " pick
 if ! [[ "$pick" =~ ^[1-9][0-9]*$ ]] || (( pick > ${#cands[@]} )); then
   echo "cfind: invalid choice: $pick" >&2
   exit 1

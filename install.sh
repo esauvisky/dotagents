@@ -3,7 +3,7 @@ set -euo pipefail
 
 agents="$HOME/.agents"
 top=$(git -C "$agents" rev-parse --show-toplevel)
-if [[ "$top" != "$agents" ]]; then
+if [[ "$top" != "$(readlink -f "$agents")" ]]; then
   echo "install: $agents must be the dotagents checkout" >&2
   exit 1
 fi

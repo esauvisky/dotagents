@@ -52,15 +52,14 @@ if [ -n "$PROMPT" ] && prompt_allows; then
   exit 0
 fi
 
-REPO_TOP=$(git rev-parse --show-toplevel 2>/dev/null || true)
+target=$(grep -oE 'git -C +[^ ;&|]+' <<<"$CMD" | head -n1 | sed -E 's/git -C +//')
+if [ -z "$target" ]; then
+  target=$(grep -oE '(^|&&|;) *cd +[^ ;&|]+' <<<"$CMD" | tail -n1 | sed -E 's/^.*cd +//')
+fi
+target="${target:-.}"
+REPO_TOP=$(git -C "${target/#\~/$HOME}" rev-parse --show-toplevel 2>/dev/null || true)
 if [ -n "$REPO_TOP" ]; then
-  if git -C "$REPO_TOP" log --format='%s' @{push}.. 2>/dev/null | grep -qiE '\[(deploy|publish)\]'; then
-    warn_creds
-    exit 0
-  fi
-  BRANCH=$(git -C "$REPO_TOP" symbolic-ref --short HEAD 2>/dev/null || true)
-  if [ -n "${BRANCH:-}" ] \
-     && git -C "$REPO_TOP" log --format='%s' "origin/${BRANCH}.." 2>/dev/null | grep -qiE '\[(deploy|publish)\]'; then
+  if git -C "$REPO_TOP" log --format='%s' HEAD --not --remotes 2>/dev/null | grep -qiE '\[(deploy|publish)\]'; then
     warn_creds
     exit 0
   fi

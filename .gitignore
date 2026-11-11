@@ -1,2 +1,26 @@
 .DS_Store
 *.log
+
+# third-party skills (install from upstream; never republish)
+/skills/refactor-plan/
+/skills/find-skills/
+/skills/improve-codebase-architecture/
+/skills/dbs-goal/
+/skills/define-goal/
+/skills/prelude/
+/skills/superpowers/
+/skills/superpowers.upstream-link.bak
+/skills/huashu-design/
+/skills/humanizer/
+/skills/reverse-engineer-anything/
+/skills/re-android/
+/.skill-lock.json
+
+# private or personal
+/skills/playstore/
+/skills/compress-commits-workspace/
+/skills/compress-commits/evals/
+/commands/session-forge.md
+
+# global ignore file excludes AGENTS.md; this repo publishes it
+!/AGENTS.md
