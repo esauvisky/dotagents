@@ -14,6 +14,7 @@ My global agent configuration: one `AGENTS.md` with instructions, skills, slash 
 | `hooks/auto-title.sh` | Stop: every 10 user turns, writes a short AI-generated title for the session. Titles set by hand are never overwritten. |
 | `hooks/split-session.sh` | UserPromptSubmit: a message starting with `%` forks the session into a new terminal. `%<text>` also sends `<text>` to the fork as its first prompt. |
 | `skills/compress-commits` | Rewrites local, unpushed commits into a few clean feature commits. |
+| `skills/humanizer` | Strips AI writing patterns and stock phrasing from prose. |
 | `skills/learn` | `/learn`: scans the session, proposes skills, commands, hooks, or AGENTS.md entries, and builds the ones you pick. |
 
 ## Commands
@@ -90,5 +91,5 @@ Other harnesses see everything in `~/.agents/skills`, including skills installed
 ## Not included
 
 - **Third-party skills**, including `prelude`. Install them from their upstream repositories.
-- **Skills with personal paths or third-party code:** `re-android`, `reverse-engineer-anything`, `playstore`, `huashu-design`, `humanizer`.
+- **Skills with personal paths or third-party code:** `re-android`, `reverse-engineer-anything`, `playstore`, `huashu-design`.
 - **Credentials and per-machine state:** `settings.json`, OAuth and credential files, session and transcript history, eval workspaces.
