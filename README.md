@@ -16,7 +16,6 @@ My global agent configuration: one `AGENTS.md` with instructions, skills, slash 
 | `hooks/split-session.sh` | UserPromptSubmit: a message starting with `%` forks the session into a new terminal. `%<text>` also sends `<text>` to the fork as its first prompt. |
 | `skills/compress-commits` | Rewrites local, unpushed commits into a few clean feature commits. |
 | `skills/learn` | `/learn`: scans the session, proposes skills, commands, hooks, or AGENTS.md entries, and builds the ones you pick. |
-| `skills/prelude` | Generates a resumable session with synthetic cooperative history. |
 
 ## Commands
 
@@ -58,6 +57,9 @@ Then merge the hook block below into `~/.claude/settings.json`.
 - `~/.claude/commands` → `commands/`
 - `~/.claude/skills/<name>` → `skills/<name>` for each shipped skill
 - `~/.local/bin/cfind` → `bin/cfind`
+- `~/.<harness>/skills` → `~/.agents/skills` for each other harness that is installed (`.iflow`, `.qwen`, `.augment`, `.openhands`, `.openclaw`, `.qoder`, `.config/goose`)
+
+Other harnesses see everything in `~/.agents/skills`, including skills installed there from third-party sources.
 
 ## Hook registration
 
@@ -90,6 +92,6 @@ Hooks run only when they appear in `~/.claude/settings.json`. That file isn't in
 
 ## Not included
 
-- **Third-party skills.** Install them from their upstream repositories.
+- **Third-party skills**, including `prelude`. Install them from their upstream repositories.
 - **Skills with personal paths or third-party code:** `re-android`, `reverse-engineer-anything`, `playstore`, `huashu-design`, `humanizer`.
 - **Credentials and per-machine state:** `settings.json`, OAuth and credential files, session and transcript history, eval workspaces.

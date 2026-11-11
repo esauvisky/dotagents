@@ -1,26 +1,57 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-description="${1:?usage: cfind \"description of the session\"}"
+description="${*:?usage: cfind description of the session}"
+
+all_files=$(ls -t ~/.claude/projects/*/*.jsonl)
+files=$(head -n 50 <<<"$all_files")
+
+terms=$(tr -cs '[:alnum:]' '\n' <<<"$description" | tr 'A-Z' 'a-z' \
+  | awk 'length($0) >= 4 && $0 !~ /^(session|where|that|with|this|from|were|have|just|like|some|about|which|they|what|when|the|and|did|our|your|find)$/' \
+  | sort -u)
+pattern=$(paste -sd'|' <<<"$terms")
+
+scored=""
+while read -r f; do
+  distinct=0
+  total=0
+  while read -r t; do
+    c=$(grep -c -i -F -- "$t" "$f" || true)
+    if (( c > 0 )); then
+      distinct=$((distinct + 1))
+      total=$((total + c))
+    fi
+  done <<<"$terms"
+  scored+="$distinct $total $f"$'\n'
+done <<<"$files"
+
+ranked=$(sort -k1,1nr -k2,2nr <<<"$scored")
+hits=$(awk '$1 > 0' <<<"$ranked")
+top=$(head -n 8 <<<"$hits" | cut -d' ' -f3-)
 
 index=""
+excerpts=""
 while read -r f; do
   id=$(basename "$f" .jsonl)
   cwd=$(jq -rs 'map(select(.cwd))[0].cwd' "$f")
   when=$(stat -c %y "$f" | cut -c1-16)
-  prompts=$(jq -rs 'map(select(.type=="user" and (.isMeta|not) and (.message.content|type=="string") and (.message.content|startswith("<")|not)) | .message.content[0:160]) | .[0:4] | join(" | ")' "$f")
-  index+="$id | $when | $cwd | $prompts"$'\n'
-done < <(ls -t ~/.claude/projects/*/*.jsonl | head -n 50)
+  index+="$id | $when | $cwd"$'\n'
+  text=$(jq -r 'select(.type=="user" or .type=="assistant") | .message.content | if type=="string" then . else (map(select(.type=="text") | .text) | join(" ")) end' "$f")
+  matches=$(grep -i -C2 -E "$pattern" <<<"$text" || true)
+  excerpt="${matches:0:15000}"
+  excerpts+="### $id | $when | $cwd"$'\n'"$excerpt"$'\n\n'
+done <<<"$top"
 
 answer=$(TITLE_HOOK_ACTIVE=1 claude -p --model haiku --no-session-persistence "A user is looking for one of their earlier Claude Code sessions.
 Description: $description
 
-Sessions (id | last modified | directory | first prompts):
-$index
+Below are the sessions with the most keyword hits across their full content. Each entry lists matching lines with context.
+$excerpts
 Reply with up to 3 candidate session ids, most likely first, one per line, in the form: <id> | <one-line reason>. Reply with NONE if nothing fits.")
 
 if [[ "$answer" == NONE* ]]; then
   echo "cfind: no matching session in the latest 50" >&2
+  echo "$answer" >&2
   exit 1
 fi
 
