@@ -3,87 +3,181 @@ set -euo pipefail
 
 description="${*:?usage: cfind description of the session}"
 
-all_files=$(ls -t ~/.claude/projects/*/*.jsonl)
-files=$(head -n 50 <<<"$all_files")
+bold=$'\e[1m'
+dim=$'\e[2m'
+cyan=$'\e[1;36m'
+yellow=$'\e[1;33m'
+reset=$'\e[0m'
+
+trim() { sed 's/^ *//;s/ *$//'; }
+
+session_fields() {
+  local f=$1 created last cwd size
+  created=$(jq -rs 'map(select(.timestamp))[0].timestamp' "$f")
+  last=$(jq -rs 'map(select(.timestamp))[-1].timestamp' "$f")
+  cwd=$(jq -rs 'map(select(.cwd))[0].cwd' "$f")
+  size=$(stat -c %s "$f")
+  printf '%s|%s|%s|%s|%s\n' "$(basename "$f" .jsonl)" "${created//T/ }" "${last//T/ }" "$size" "$cwd"
+}
+
+excerpt_for() {
+  local text matches
+  text=$(jq -r 'select(.type=="user" or .type=="assistant") | .message.content | if type=="string" then . else (map(select(.type=="text") | .text) | join(" ")) end' "$1")
+  matches=$(grep -i -C2 -E "$pattern" <<<"$text" || true)
+  printf '%s' "${matches:0:15000}"
+}
 
 terms=$(tr -cs '[:alnum:]' '\n' <<<"$description" | tr 'A-Z' 'a-z' \
   | awk 'length($0) >= 4 && $0 !~ /^(session|where|that|with|this|from|were|have|just|like|some|about|which|they|what|when|the|and|did|our|your|find)$/' \
   | sort -u)
+if [[ -z "$terms" ]]; then
+  echo "cfind: description has no searchable words" >&2
+  exit 1
+fi
 pattern=$(paste -sd'|' <<<"$terms")
 
-scored=""
-while read -r f; do
-  distinct=0
-  total=0
-  while read -r t; do
-    c=$(grep -c -i -F -- "$t" "$f" || true)
-    if (( c > 0 )); then
-      distinct=$((distinct + 1))
-      total=$((total + c))
-    fi
-  done <<<"$terms"
-  scored+="$distinct $total $f"$'\n'
-done <<<"$files"
+all_files=$(ls -t ~/.claude/projects/*/*.jsonl)
+total_sessions=$(wc -l <<<"$all_files")
 
-ranked=$(sort -k1,1nr -k2,2nr <<<"$scored")
-hits=$(awk '$1 > 0' <<<"$ranked")
-top=$(head -n 8 <<<"$hits" | cut -d' ' -f3-)
+found=0
+for window in 50 all; do
+  if [[ "$window" == all ]]; then
+    files=$all_files
+  else
+    files=$(head -n 50 <<<"$all_files")
+  fi
 
-index=""
-excerpts=""
-while read -r f; do
-  id=$(basename "$f" .jsonl)
-  cwd=$(jq -rs 'map(select(.cwd))[0].cwd' "$f")
-  when=$(stat -c %y "$f" | cut -c1-16)
-  index+="$id | $when | $cwd"$'\n'
-  text=$(jq -r 'select(.type=="user" or .type=="assistant") | .message.content | if type=="string" then . else (map(select(.type=="text") | .text) | join(" ")) end' "$f")
-  matches=$(grep -i -C2 -E "$pattern" <<<"$text" || true)
-  excerpt="${matches:0:15000}"
-  excerpts+="### $id | $when | $cwd"$'\n'"$excerpt"$'\n\n'
-done <<<"$top"
+  scored=""
+  while read -r f; do
+    distinct=0
+    total=0
+    while read -r t; do
+      c=$(grep -c -i -F -- "$t" "$f" || true)
+      if (( c > 0 )); then
+        distinct=$((distinct + 1))
+        total=$((total + c))
+      fi
+    done <<<"$terms"
+    scored+="$distinct $total $f"$'\n'
+  done <<<"$files"
 
-answer=$(TITLE_HOOK_ACTIVE=1 claude -p --model haiku --no-session-persistence "A user is looking for one of their earlier Claude Code sessions.
+  ranked=$(sort -k1,1nr -k2,2nr <<<"$scored")
+  hits=$(awk '$1 > 0' <<<"$ranked")
+  if [[ -z "$hits" ]]; then
+    echo "cfind: no session in the $window window contains any of: $(paste -sd' ' <<<"$terms"); widening" >&2
+    continue
+  fi
+  top=$(head -n 8 <<<"$hits" | cut -d' ' -f3-)
+
+  blocks=""
+  while read -r f; do
+    blocks+="### $(session_fields "$f")"$'\n'"$(excerpt_for "$f")"$'\n\n'
+  done <<<"$top"
+
+  answer=$(TITLE_HOOK_ACTIVE=1 claude -p --model haiku --no-session-persistence "A user is looking for one of their earlier Claude Code sessions.
 Description: $description
 
-Below are the sessions with the most keyword hits across their full content. Each entry lists matching lines with context.
-$excerpts
-Reply with up to 3 candidate session ids, most likely first, one per line, in the form: <id> | <one-line reason>. Reply with NONE if nothing fits.")
+Sessions with the most keyword hits. Each block header is: id|created|last message|size|directory, followed by matching lines with context.
+$blocks
+For up to 3 candidates, most likely first, output one line per candidate:
+<id> | <title, at most 8 words, a noun phrase naming what the session did> | <high|medium|low> | <one-line reason>
+Output only those lines, or NONE if nothing fits.")
 
-if [[ "$answer" == NONE* ]]; then
-  echo "cfind: no matching session in the latest 50" >&2
-  echo "$answer" >&2
+  if [[ "$answer" == NONE* ]]; then
+    echo "cfind: no matching session in the $window window; widening" >&2
+    continue
+  fi
+  found=1
+  break
+done
+
+if (( found == 0 )); then
+  echo "cfind: no matching session in any of the $total_sessions sessions" >&2
   exit 1
 fi
 
-mapfile -t cands < <(grep -E '^[0-9a-f-]{36} \|' <<<"$answer" | head -n 3)
-if (( ${#cands[@]} == 0 )); then
+mapfile -t lines < <(grep -E '^[0-9a-f-]{36} \|' <<<"$answer" | sed -n '1,3p')
+if (( ${#lines[@]} == 0 )); then
   echo "cfind: unparseable answer:" >&2
   echo "$answer" >&2
   exit 1
 fi
 
-bold=$'\e[1m'
-dim=$'\e[2m'
-cyan=$'\e[1;36m'
-reset=$'\e[0m'
-
-echo
-for i in "${!cands[@]}"; do
-  id=$(cut -d' ' -f1 <<<"${cands[i]}")
-  row=$(grep "^$id " <<<"$index")
-  reason=$(cut -d'|' -f2- <<<"${cands[i]}" | sed 's/^ *//')
-  meta=$(cut -d'|' -f2,3 <<<"$row" | sed "s/^ *//;s/ *$//;s/|/ · /;s#$HOME#~#")
-  printf '%s%d)%s %s%s%s\n' "$cyan" $((i+1)) "$reset" "$bold" "$reason" "$reset"
-  printf '     %s%s%s\n\n' "$dim" "$meta" "$reset"
+ids=(); titles=(); confs=(); reasons=(); files_c=()
+for line in "${lines[@]}"; do
+  IFS='|' read -r id title conf reason <<<"$line"
+  id=$(trim <<<"$id")
+  file=$(grep -F "/$id.jsonl" <<<"$top" || true)
+  if [[ -z "$file" ]]; then
+    echo "cfind: model returned id not among candidates: $id" >&2
+    exit 1
+  fi
+  ids+=("$id")
+  titles+=("$(trim <<<"$title")")
+  confs+=("$(trim <<<"$conf")")
+  reasons+=("$(trim <<<"$reason")")
+  files_c+=("$file")
 done
 
-read -r -p "${bold}Resume which? [1-${#cands[@]}]${reset} " pick
-if ! [[ "$pick" =~ ^[1-9][0-9]*$ ]] || (( pick > ${#cands[@]} )); then
-  echo "cfind: invalid choice: $pick" >&2
+n=${#ids[@]}
+
+if (( n == 1 )) && [[ "${confs[0]}" == high ]]; then
+  choice=1
+else
+  echo
+  for i in "${!ids[@]}"; do
+    IFS='|' read -r sid created last size cwd < <(session_fields "${files_c[i]}")
+    hsize=$(numfmt --to=iec-i --suffix=B "$size")
+    printf '%s%d)%s %s%s%s  %s[%s]%s\n' "$cyan" $((i + 1)) "$reset" "$bold" "${titles[i]}" "$reset" "$yellow" "${confs[i]}" "$reset"
+    printf '     %s%s%s\n' "$dim" "${reasons[i]}" "$reset"
+    printf '     %sid %s · created %s · last %s · %s · %s%s\n\n' "$dim" "$sid" "$created" "$last" "$hsize" "${cwd/#$HOME/~}" "$reset"
+  done
+  read -r -p "${bold}Pick 1-${n} to resume, several to compact (e.g. 1,3), or c for all:${reset} " choice
+fi
+
+if [[ "$choice" == c ]]; then
+  chosen=$(seq 1 "$n" | paste -sd, -)
+elif [[ "$choice" =~ ^[0-9]+(,[0-9]+)*$ ]]; then
+  chosen="$choice"
+else
+  echo "cfind: invalid choice: $(printf %q "$choice")" >&2
   exit 1
 fi
 
-id=$(cut -d' ' -f1 <<<"${cands[pick-1]}")
-cwd=$(grep "^$id " <<<"$index" | cut -d'|' -f3 | sed 's/^ *//;s/ *$//')
+IFS=',' read -r -a picks <<<"$chosen"
+for p in "${picks[@]}"; do
+  if (( p < 1 || p > n )); then
+    echo "cfind: choice out of range: $p" >&2
+    exit 1
+  fi
+done
+
+if (( ${#picks[@]} == 1 )); then
+  p=$((picks[0] - 1))
+  IFS='|' read -r sid _ _ _ cwd < <(session_fields "${files_c[p]}")
+  cd "$cwd"
+  claude --resume "$sid"
+  exec "$SHELL"
+fi
+
+brief_input=""
+for p in "${picks[@]}"; do
+  f=${files_c[p - 1]}
+  brief_input+="### $(session_fields "$f")"$'\n'"$(excerpt_for "$f")"$'\n\n'
+done
+
+briefing=$(TITLE_HOOK_ACTIVE=1 claude -p --model haiku --no-session-persistence "Write a briefing for a new Claude Code session that continues the work in these earlier sessions. Start with one header line listing the source session ids. Then cover: goal, decisions made, current state, open items, relevant file paths. Output only the briefing.
+
+$brief_input")
+
+combined=""
+for p in "${picks[@]}"; do
+  combined+="${combined:+ + }${titles[p - 1]}"
+done
+combined="${combined:0:64}"
+
+first=$((picks[0] - 1))
+IFS='|' read -r _ _ _ _ cwd < <(session_fields "${files_c[first]}")
 cd "$cwd"
-exec claude --resume "$id"
+claude --name "⊕ $combined" "$briefing"
+exec "$SHELL"
