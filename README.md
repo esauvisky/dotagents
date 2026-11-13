@@ -15,6 +15,7 @@ My global agent configuration: one `AGENTS.md` with instructions, skills, slash 
 | `hooks/split-session.sh` | UserPromptSubmit: a message starting with `%` forks the session into a new terminal. `%<text>` also sends `<text>` to the fork as its first prompt. |
 | `skills/compress-commits` | Rewrites local, unpushed commits into a few clean feature commits. |
 | `skills/humanizer` | Strips AI writing patterns and stock phrasing from prose. |
+| `skills/local-first-device` | Researches a new smart device, ranks the most local ways to integrate it with the home server (HA, Z2M, ESPHome, pihole, MikroTik), and implements the chosen one. Home-infra facts live in a gitignored `references/home-infra.local.md`. |
 | `skills/learn` | `/learn`: scans the session, proposes skills, commands, hooks, or AGENTS.md entries, and builds the ones you pick. |
 
 ## Commands

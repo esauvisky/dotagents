@@ -19,6 +19,9 @@
 /skills/playstore/
 /skills/compress-commits-workspace/
 /skills/compress-commits/evals/
+/skills/local-first-device/evals/
+/skills/local-first-device-workspace/
+/skills/*/references/*.local.md
 /commands/session-forge.md
 
 # global ignore file excludes AGENTS.md; this repo publishes it
